@@ -1,0 +1,635 @@
+{
+  "name": "Demo: My first AI Agent in n8n",
+  "nodes": [
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.message.voice ? 'voice' : ($json.message.text && $json.message.text.toLowerCase().includes('cancel') ? 'cancel' : 'text')}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "voice"
+            },
+            {
+              "value2": "text",
+              "output": 1
+            },
+            {
+              "value2": "cancel",
+              "output": 2
+            }
+          ]
+        }
+      },
+      "name": "Route Message Type1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        256,
+        4768
+      ],
+      "id": "2481c7fb-1309-4b2d-8834-9d1ead188342"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{$json.message.voice.file_id}}"
+      },
+      "name": "Get Voice File1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        448,
+        4560
+      ],
+      "id": "c1c32469-1fd8-4462-8083-e98cfd323f96",
+      "webhookId": "3c4e1666-3547-4b0f-81ca-3bc293014294",
+      "credentials": {
+        "telegramApi": {
+          "id": "0RSyayNRNQpFo2Ru",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.openrouter.ai/v1/audio/transcriptions",
+        "sendBody": true,
+        "specifyBody": "form",
+        "options": {}
+      },
+      "name": "Transcribe Voice1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        848,
+        4560
+      ],
+      "id": "ec1342f3-d665-4846-9e55-2f5cde1f53c1"
+    },
+    {
+      "parameters": {
+        "text": "=={{$json.messageText}}\n",
+        "options": {
+          "humanMessage": "={{$json.messageText}}\n\nWhen complete, respond with JSON format using these fields: destination, start_date, end_date, travelers, budget_level, budget_amount, transport_type, hotel_type, food_preferences, email, special_requests, booking_complete (set to true).\n",
+          "systemMessage": "You are a professional travel booking assistant. Help users plan their trips by gathering required information: destination, travel dates, number of travelers, budget level, transportation preference, accommodation type, food preferences, and email.\n\nBe conversational and friendly. Ask for missing information naturally, one or two items at a time. When you have ALL required information, respond with ONLY a properly formatted JSON object with booking_complete set to true.\n",
+          "maxIterations": 10
+        }
+      },
+      "name": "Travel AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        4784
+      ],
+      "id": "7f2920f3-57bc-4d75-97af-9c59c5f56202"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=telegram_{{$json.chatId}}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        5104
+      ],
+      "id": "a7784856-d6bc-43e4-a425-17aa97c397fa",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 1000,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        5072
+      ],
+      "id": "9f7ee553-65bd-4128-aa5e-af152980d749",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "DlZShoSZBS604wzr",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        48,
+        4768
+      ],
+      "id": "a1447ff3-e2d0-4a26-a3f1-d18576fbf011",
+      "webhookId": "f7c6b5a6-3290-4284-85a5-330813f1a9ab",
+      "credentials": {
+        "telegramApi": {
+          "id": "0RSyayNRNQpFo2Ru",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot{{$credentials.telegramApi.accessToken}}/{{$json.file_path}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "voice_data"
+            }
+          }
+        }
+      },
+      "name": "Download Voice File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        4560
+      ],
+      "id": "1b41cc9e-f6fc-4a29-a69f-aae83741b1a2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process voice transcription result\nconst transcriptionResult = $json;\nconst originalMessage = $('Telegram Trigger').first().json.message;\n\nlet messageText = '';\nif (transcriptionResult.text) {\n  messageText = transcriptionResult.text;\n} else if (transcriptionResult.choices && transcriptionResult.choices[0]) {\n  messageText = transcriptionResult.choices[0].text || transcriptionResult.choices[0].message?.content || '';\n}\n\nreturn {\n  messageText: messageText,\n  messageType: 'voice',\n  chatId: originalMessage.chat.id,\n  from: originalMessage.from,\n  originalMessage: originalMessage\n};"
+      },
+      "name": "Process Voice Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        4560
+      ],
+      "id": "377ccdc9-ba61-4dcf-9896-6cc4e137a044"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process text message\nconst originalMessage = $json.message;\n\nreturn {\n  messageText: originalMessage.text || '',\n  messageType: 'text',\n  chatId: originalMessage.chat.id,\n  from: originalMessage.from,\n  originalMessage: originalMessage\n};"
+      },
+      "name": "Process Text Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        4768
+      ],
+      "id": "3edaf37d-667e-4036-9682-9d3f921bc84b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process cancel message\nconst originalMessage = $json.message;\n\nreturn {\n  messageText: originalMessage.text || '',\n  messageType: 'cancel',\n  chatId: originalMessage.chat.id,\n  from: originalMessage.from,\n  originalMessage: originalMessage\n};"
+      },
+      "name": "Process Cancel Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        4960
+      ],
+      "id": "94631dd7-3280-47e5-b808-6099f2aac16a"
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.messageType}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "cancel"
+            },
+            {
+              "value2": "text",
+              "output": 1
+            },
+            {
+              "value2": "voice",
+              "output": 1
+            }
+          ]
+        }
+      },
+      "name": "Route Processed Messages",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        4976
+      ],
+      "id": "4cb8e2ca-12aa-4d6a-a092-132fe345cffb"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "❌ **Cancellation Request Received**\\n\\n🔄 Processing your cancellation request...\\n📧 Confirmation will be sent to your email within 24-48 hours.\\n💰 Refund details (if applicable) will follow our cancellation policy.\\n\\n📞 Need assistance? Reply with more details.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Cancellation Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        4560
+      ],
+      "id": "dd24b1bf-851f-4af5-9e9b-090e6531bb11",
+      "webhookId": "fb539307-109d-474d-8a56-4709f120a44f",
+      "credentials": {
+        "telegramApi": {
+          "id": "0RSyayNRNQpFo2Ru",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract booking information from AI response\nconst aiResponse = $json.output || '';\nconst chatId = $('Route Processed Messages').first().json.chatId;\nconst originalData = $('Route Processed Messages').first().json;\n\nconsole.log('AI Response:', aiResponse);\n\n// Try to extract JSON from AI response\nlet bookingData = null;\nlet isBookingComplete = false;\n\n// Look for JSON in the response - multiple patterns\nconst jsonPatterns = [\n  /```json\\s*([\\s\\S]*?)\\s*```/,\n  /```\\s*([\\s\\S]*?)\\s*```/,\n  /{[\\s\\S]*\"booking_complete\"\\s*:\\s*true[\\s\\S]*}/,\n  /{[\\s\\S]*}/\n];\n\nfor (const pattern of jsonPatterns) {\n  const match = aiResponse.match(pattern);\n  if (match) {\n    try {\n      const jsonStr = match[1] || match[0];\n      console.log('Attempting to parse JSON:', jsonStr);\n      bookingData = JSON.parse(jsonStr);\n      isBookingComplete = bookingData.booking_complete === true;\n      if (isBookingComplete) {\n        console.log('Found complete booking data:', bookingData);\n        break;\n      }\n    } catch (error) {\n      console.log('JSON parse failed:', error.message);\n      continue;\n    }\n  }\n}\n\n// Generate booking ID if booking is complete\nif (isBookingComplete && bookingData) {\n  bookingData.bookingId = 'TRV' + Date.now().toString(36).toUpperCase();\n  bookingData.createdAt = new Date().toISOString();\n  console.log('Generated booking ID:', bookingData.bookingId);\n}\n\nreturn {\n  aiResponse: aiResponse,\n  bookingData: bookingData,\n  isBookingComplete: isBookingComplete,\n  chatId: chatId,\n  originalData: originalData\n};"
+      },
+      "name": "Extract Booking Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        5104
+      ],
+      "id": "9e6638d0-9533-40e3-94df-c09c3e4bcf34"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isBookingComplete}}"
+            }
+          ]
+        }
+      },
+      "name": "Check Booking Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        4864
+      ],
+      "id": "bf707b91-f5f1-47dc-85b8-2bcaa633a9e1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "={{$json.aiResponse}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send AI Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        2176,
+        4656
+      ],
+      "id": "f1499dc6-8d07-4e77-aa06-b7adae0ff4f4",
+      "webhookId": "b7995dca-52dc-4d12-aa44-94e6cb777b4a",
+      "credentials": {
+        "telegramApi": {
+          "id": "0RSyayNRNQpFo2Ru",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "tharanidharane77@gmail.com",
+          "mode": "list",
+          "cachedResultName": "tharanidharane77@gmail.com"
+        },
+        "start": "={{$json.bookingData.start_date}}T09:00:00",
+        "end": "={{$json.bookingData.end_date}}T18:00:00",
+        "useDefaultReminders": false,
+        "additionalFields": {
+          "description": "=🎯 TRAVEL BOOKING DETAILS\\n\\n📍 Destination: {{$json.bookingData.destination}}\\n👥 Travelers: {{$json.bookingData.travelers}}\\n💰 Budget: {{$json.bookingData.budget_level}} (${{$json.bookingData.budget_amount || 'TBD'}})\\n🚗 Transport: {{$json.bookingData.transport_type}}\\n🏨 Hotel: {{$json.bookingData.hotel_type}}\\n🍽️ Food: {{$json.bookingData.food_preferences}}\\n📧 Contact: {{$json.bookingData.email}}\\n\\n🆔 Booking ID: {{$json.bookingData.bookingId}}\\n📅 Created: {{new Date($json.bookingData.createdAt).toLocaleString()}}\\n\\n{{$json.bookingData.special_requests && $json.bookingData.special_requests !== 'None' ? '📋 Special Requests: ' + $json.bookingData.special_requests : ''}}",
+          "summary": "=✈️ Trip to {{$json.bookingData.destination}} - {{$json.bookingData.budget_level}}"
+        }
+      },
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        4960
+      ],
+      "id": "a3fa5aaa-b664-4204-bcf1-a668e1ff0c01",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "D8tNhl8HNMMlG0nl",
+          "name": "Google Calendar account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "subject": "=Travel Booking Confirmation - {{$json.bookingData.bookingId}}",
+        "message": "=Dear Traveler,\\n\\n🎉 Your travel booking has been confirmed! Here are your complete details:\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n🎯 BOOKING OVERVIEW\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n📍 Destination: {{$json.bookingData.destination}}\\n📅 Travel Dates: {{$json.bookingData.start_date}} to {{$json.bookingData.end_date}}\\n👥 Travelers: {{$json.bookingData.travelers}} person(s)\\n💰 Budget Level: {{$json.bookingData.budget_level.toUpperCase()}}\\n{{$json.bookingData.budget_amount ? '💵 Budget Amount: $' + $json.bookingData.budget_amount : ''}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n🚗 TRANSPORTATION\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n🚊 Type: {{$json.bookingData.transport_type}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n🏨 ACCOMMODATION\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n🛏️ Hotel Type: {{$json.bookingData.hotel_type}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n🍽️ DINING\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n🍴 Preferences: {{$json.bookingData.food_preferences}}\\n\\n{{$json.bookingData.special_requests && $json.bookingData.special_requests !== 'None' ? '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n📋 SPECIAL REQUESTS\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n✨ ' + $json.bookingData.special_requests + '\\n\\n' : ''}}🆔 Booking Reference: {{$json.bookingData.bookingId}}\\n📅 Booking Date: {{new Date($json.bookingData.createdAt).toLocaleDateString()}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n❌ CANCELLATION POLICY\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\nTo cancel or modify your booking, send 'cancel' to our Telegram bot or reply to this email.\\n\\n📞 24/7 Support: Reply to this email for assistance\\n🤖 Bot Support: Use our Telegram bot for instant help\\n\\nThank you for choosing our AI Travel Assistant!\\nHave an amazing trip! 🌟\\n\\nBest regards,\\nAI Travel Assistant Team",
+        "additionalFields": {}
+      },
+      "name": "Send Booking Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [
+        2320,
+        5072
+      ],
+      "id": "f692dc5f-30cd-4964-a55f-ff1a94a5af85",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "HgFznGjLRkRSoOuK",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "=🎉 **BOOKING CONFIRMED!**\\n\\n✅ Your travel booking has been successfully created!\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n📋 **BOOKING SUMMARY**\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n📍 **Destination:** {{$json.bookingData.destination}}\\n📅 **Dates:** {{$json.bookingData.start_date}} to {{$json.bookingData.end_date}}\\n👥 **Travelers:** {{$json.bookingData.travelers}} person(s)\\n💰 **Budget:** {{$json.bookingData.budget_level}}\\n🚗 **Transport:** {{$json.bookingData.transport_type}}\\n🏨 **Hotel:** {{$json.bookingData.hotel_type}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n📧 **CONFIRMATION DETAILS**\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n🎫 **Booking ID:** `{{$json.bookingData.bookingId}}`\\n📧 **Email sent to:** {{$json.bookingData.email}}\\n📅 **Calendar event added**\\n⏰ **Created:** {{new Date($json.bookingData.createdAt).toLocaleString()}}\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n🔧 **NEXT STEPS**\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\n\\n✉️ Check your email for detailed itinerary\\n📅 Check your calendar for the travel event\\n❌ Send 'cancel' to modify your booking\\n📞 Reply for any assistance\\n\\nThank you for using our AI Travel Assistant! 🌟\\n\\n*Have an amazing trip!* ✈️🏖️",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Booking Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        2576,
+        4976
+      ],
+      "id": "8739f97e-5c86-4b89-a063-1e7a7550c700",
+      "webhookId": "7d384ec9-2508-47a2-9d1f-7af7eb1028de",
+      "credentials": {
+        "telegramApi": {
+          "id": "0RSyayNRNQpFo2Ru",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        5216
+      ],
+      "id": "c433db98-069c-46da-8d9a-65feca0644bd",
+      "name": "Calculator1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Route Message Type1": {
+      "main": [
+        [
+          {
+            "node": "Get Voice File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Text Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Cancel Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Voice File1": {
+      "main": [
+        [
+          {
+            "node": "Download Voice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Voice1": {
+      "main": [
+        [
+          {
+            "node": "Process Voice Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Travel AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Extract Booking Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Travel AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Travel AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route Message Type1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Voice File": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Voice1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Voice Message": {
+      "main": [
+        [
+          {
+            "node": "Route Processed Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Text Message": {
+      "main": [
+        [
+          {
+            "node": "Route Processed Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Cancel Message": {
+      "main": [
+        [
+          {
+            "node": "Route Processed Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Processed Messages": {
+      "main": [
+        [
+          {
+            "node": "Send Cancellation Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Travel AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Booking Data": {
+      "main": [
+        [
+          {
+            "node": "Check Booking Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Booking Complete": {
+      "main": [
+        [
+          {
+            "node": "Send AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Send Booking Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Booking Email": {
+      "main": [
+        [
+          {
+            "node": "Send Booking Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Travel AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "07d0dec1-c71c-4a48-96dd-0be655606d00",
+  "meta": {
+    "templateId": "self-building-ai-agent",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5253809935c1120e7a61ec126e80e47b3f1cc8bc44187cca5f69010a00040b22"
+  },
+  "id": "rbrBcv5QP4xZKKSB",
+  "tags": []
+}
